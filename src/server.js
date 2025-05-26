@@ -48,12 +48,12 @@ app.post('/users/login', async (req, res) => {
   }
 });
 
-// Get all watchlist items for a user
+// Get all watchlist items for a user (per-user only)
 app.get('/watchlist/:userId', async (req, res) => {
   const { userId } = req.params;
   try {
     const result = await pool.query(
-      'SELECT * FROM watchlist WHERE user_id = $1',
+      'SELECT * FROM watchlist WHERE user_id = $1 ORDER BY id ASC',
       [userId]
     );
     res.json(result.rows);
@@ -63,14 +63,22 @@ app.get('/watchlist/:userId', async (req, res) => {
   }
 });
 
-// Add a new anime to the watchlist
+// Add a new anime to the watchlist (per-user)
 app.post('/watchlist', async (req, res) => {
-  console.log('POST /watchlist body:', req.body); // Debug log
   const { user_id, title, status, rating } = req.body;
   if (!user_id || !title || !status) {
     return res.status(400).json({ message: 'Missing required fields.' });
   }
   try {
+    // Prevent duplicate titles for the same user
+    const duplicate = await pool.query(
+      'SELECT * FROM watchlist WHERE user_id = $1 AND LOWER(title) = LOWER($2)',
+      [user_id, title]
+    );
+    if (duplicate.rows.length > 0) {
+      return res.status(400).json({ message: 'This anime is already in your watchlist.' });
+    }
+
     const result = await pool.query(
       'INSERT INTO watchlist (user_id, title, status, rating) VALUES ($1, $2, $3, $4) RETURNING *',
       [user_id, title, status, rating]
@@ -82,7 +90,7 @@ app.post('/watchlist', async (req, res) => {
   }
 });
 
-// Update an anime in the watchlist
+// Update an anime in the watchlist (per-user)
 app.put('/watchlist/:id', async (req, res) => {
   const { id } = req.params;
   const { title, status, rating } = req.body;
@@ -104,7 +112,7 @@ app.put('/watchlist/:id', async (req, res) => {
   }
 });
 
-// Delete an anime from the watchlist
+// Delete an anime from the watchlist (per-user)
 app.delete('/watchlist/:id', async (req, res) => {
   const { id } = req.params;
   try {

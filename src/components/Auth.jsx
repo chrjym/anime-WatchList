@@ -58,7 +58,8 @@ const Auth = () => {
                 localStorage.setItem("isLoggedIn", "true");
                 localStorage.setItem("userEmail", data.user?.email || form.email);
                 localStorage.setItem("userId", data.user?.id || "");
-                navigate("/");
+                navigate("/main");
+                window.location.reload(); // Ensures Main.jsx gets the new userId after login/register
             } else {
                 alert(data.message || "Authentication failed");
             }

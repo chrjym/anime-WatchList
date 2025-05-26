@@ -32,7 +32,7 @@ export default function Watchlist({ navigate, userId }) {
         };
     }, []);
 
-    // Fetch watchlist from backend
+    // Fetch watchlist from backend for the current user only
     useEffect(() => {
         if (!userId) return;
         fetch(`${API_URL}/watchlist/${userId}`)
@@ -44,7 +44,10 @@ export default function Watchlist({ navigate, userId }) {
                     throw new Error("Server did not return JSON. Check backend logs.");
                 }
             })
-            .then(data => setWatchlist(data))
+            .then(data => {
+                // Use the data as is, backend already filters by user
+                setWatchlist(Array.isArray(data) ? data : []);
+            })
             .catch(err => {
                 alert(err.message || "Failed to fetch watchlist.");
                 setWatchlist([]);
@@ -71,11 +74,56 @@ export default function Watchlist({ navigate, userId }) {
         }));
     };
 
-    // Add or Edit anime (CRUD with backend)
+    // --- Anime Search State ---
+    const [searchTerm, setSearchTerm] = useState("");
+    const [searchResults, setSearchResults] = useState([]);
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [searchError, setSearchError] = useState("");
+
+    // --- Anime Search Handler ---
+    const handleSearch = async (e) => {
+        e.preventDefault();
+        setSearchError("");
+        setSearchResults([]);
+        if (!searchTerm.trim()) {
+            setSearchError("Enter a title to search.");
+            return;
+        }
+        setSearchLoading(true);
+        try {
+            const res = await fetch(
+                `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(searchTerm)}&limit=8`
+            );
+            const data = await res.json();
+            if (data && Array.isArray(data.data)) {
+                setSearchResults(data.data);
+                if (data.data.length === 0) setSearchError("No results found.");
+            } else {
+                setSearchError("No results found.");
+            }
+        } catch {
+            setSearchError("Failed to search. Try again.");
+        }
+        setSearchLoading(false);
+    };
+
+    // --- Add from Search Result ---
+    const handleAddFromSearch = (anime) => {
+        setModalMode("add");
+        setCurrentAnime({
+            title: anime.title_english || anime.title,
+            status: "Plan to Watch",
+            rating: 0,
+            id: null,
+        });
+        setShowModal(true);
+    };
+
+    // --- Add or Edit anime (CRUD with backend) ---
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!currentAnime.title.trim()) {
-            alert("Title is required.");
+            alert("Please enter a valid anime title. Only verified anime series can be added to your watchlist.\nMake sure the title matches an official anime name.");
             return;
         }
         if (!userId || isNaN(Number(userId))) {
@@ -85,6 +133,67 @@ export default function Watchlist({ navigate, userId }) {
         if (!currentAnime.status) {
             alert("Status is required.");
             return;
+        }
+
+        // Prevent duplicate titles for the same user
+        if (
+            modalMode === "add" &&
+            watchlist.some(
+                (a) =>
+                    a.title.toLowerCase() === currentAnime.title.trim().toLowerCase()
+            )
+        ) {
+            alert("This anime is already in your watchlist.");
+            return;
+        }
+
+        // Only verify if user typed title manually (not from search)
+        if (
+            modalMode === "add" &&
+            !searchResults.some(
+                (a) =>
+                    (a.title && a.title.toLowerCase() === currentAnime.title.trim().toLowerCase()) ||
+                    (a.title_english &&
+                        a.title_english.toLowerCase() === currentAnime.title.trim().toLowerCase())
+            )
+        ) {
+            let verified = false;
+            try {
+                const jikanRes = await fetch(
+                    `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(currentAnime.title)}&limit=1`
+                );
+                const jikanData = await jikanRes.json();
+                if (
+                    jikanData &&
+                    Array.isArray(jikanData.data) &&
+                    jikanData.data.length > 0 &&
+                    jikanData.data[0].title
+                ) {
+                    const foundTitle = jikanData.data[0].title.toLowerCase();
+                    if (
+                        foundTitle === currentAnime.title.trim().toLowerCase() ||
+                        (jikanData.data[0].title_english &&
+                            jikanData.data[0].title_english.toLowerCase() === currentAnime.title.trim().toLowerCase())
+                    ) {
+                        verified = true;
+                    } else if (
+                        foundTitle.includes(currentAnime.title.trim().toLowerCase()) ||
+                        (jikanData.data[0].title_english &&
+                            jikanData.data[0].title_english
+                                .toLowerCase()
+                                .includes(currentAnime.title.trim().toLowerCase()))
+                    ) {
+                        verified = true;
+                    }
+                }
+            } catch {
+                alert("Could not verify anime title. Please check your internet connection or try again later.");
+                return;
+            }
+            if (!verified) {
+                alert("Anime not found. Please enter a valid anime title from MyAnimeList.");
+                return;
+            }
         }
 
         if (modalMode === "add") {
@@ -150,6 +259,10 @@ export default function Watchlist({ navigate, userId }) {
 
     // Delete anime (CRUD with backend)
     const handleDelete = async (id) => {
+        const confirmDelete = window.confirm(
+            "Are you sure you want to delete this anime from your watchlist?\nThis action cannot be undone."
+        );
+        if (!confirmDelete) return;
         try {
             const res = await fetch(`${API_URL}/watchlist/${id}`, { method: 'DELETE' });
             if (!res.ok) {
@@ -176,6 +289,51 @@ export default function Watchlist({ navigate, userId }) {
                     <h2 style={styles.title}>Your Watchlist</h2>
                     <button style={styles.addBtn} onClick={openAddModal}>+ Add Anime</button>
                 </div>
+
+                {/* --- Anime Search Section --- */}
+                <form onSubmit={handleSearch} style={{ marginBottom: "1.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <input
+                        type="text"
+                        placeholder="Search for anime title..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        style={{ ...styles.input, width: "260px" }}
+                    />
+                    <button
+                        style={{ ...styles.saveBtn, padding: "0.6rem 1.2rem" }}
+                        type="submit"
+                        disabled={searchLoading}
+                    >
+                        {searchLoading ? "Searching..." : "Search"}
+                    </button>
+                </form>
+                {searchError && (
+                    <div style={{ color: "#ff6f61", marginBottom: "1rem", fontSize: "1rem" }}>
+                        {searchError}
+                    </div>
+                )}
+                {searchResults.length > 0 && (
+                    <div style={{ marginBottom: "1.5rem", background: "#23252b", borderRadius: "8px", padding: "1rem" }}>
+                        <div style={{ color: "#ffb347", fontWeight: "bold", marginBottom: "0.5rem" }}>Search Results:</div>
+                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                            {searchResults.map(anime => (
+                                <li key={anime.mal_id} style={{ marginBottom: "0.7rem", display: "flex", alignItems: "center" }}>
+                                    <img src={anime.images.jpg.image_url} alt={anime.title} style={{ width: 38, height: 54, objectFit: "cover", borderRadius: 4, marginRight: 12 }} />
+                                    <span style={{ color: "#fff", fontWeight: 500, marginRight: 10 }}>{anime.title_english || anime.title}</span>
+                                    <button
+                                        style={{ ...styles.saveBtn, padding: "0.3rem 1rem", fontSize: "0.95rem" }}
+                                        onClick={() => handleAddFromSearch(anime)}
+                                    >
+                                        Add
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+
+                {/* --- End Anime Search Section --- */}
+
                 {watchlist.length === 0 ? (
                     <div style={styles.empty}>No anime in your watchlist yet.</div>
                 ) : (
