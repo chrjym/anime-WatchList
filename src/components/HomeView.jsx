@@ -6,7 +6,7 @@ const navStyle = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  padding: "1rem 2.5rem",
+  padding: "1rem 22.5rem",
   background: "#181a20",
   color: "#e0e0e0",
   fontSize: "1.15rem",
@@ -39,6 +39,7 @@ const homeContainer = {
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
+  paddingTop: "5rem",
 };
 
 const titleStyle = {
@@ -54,6 +55,18 @@ const descStyle = {
   maxWidth: "800px",
   textAlign: "center",
   marginBottom: "2rem",
+};
+
+const subtitleStyle = {
+  fontSize: "2rem",
+  fontWeight: "600",
+  marginBottom: "1rem",
+  color: "#FAF9F6",
+  justifyContent: "left",
+  width: "66%",
+  paddingLeft: "5.5rem",
+  paddingTop: "4rem",
+  textAlign: "left",
 };
 
 // check login status in order access to watchlist
@@ -240,7 +253,13 @@ function AnimeList() {
         return res.json();
       })
       .then((data) => {
-        setAnimes((prev) => [...prev, ...(data.data || [])]);
+        setAnimes((prev) => {
+          const existingIds = new Set(prev.map((a) => a.mal_id));
+          const newAnimes = (data.data || []).filter(
+            (a) => !existingIds.has(a.mal_id)
+          );
+          return [...prev, ...newAnimes];
+        });
         setHasMore(data.pagination?.has_next_page ?? false);
         setLoading(false);
       })
@@ -258,15 +277,22 @@ function AnimeList() {
 
   return (
     <div
-      style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        maxWidth: "100%",
+      }}
     >
       <div
         style={{
-          display: "flex",
-          flexWrap: "wrap",
+          display: "grid",
+          gridTemplateColumns: "repeat(5, 1fr)",
+          gridAutoRows: "auto",
           gap: "2rem",
-          justifyContent: "center",
-          marginTop: "2rem",
+          justifyItems: "center",
+          width: "100%",
+          maxWidth: "1200px",
         }}
       >
         {animes.map((anime) => (
@@ -338,7 +364,7 @@ function Footer() {
   return (
     <footer
       style={{
-        width: "100%", // full width
+        width: "98%", // full width
         textAlign: "center",
         padding: "1rem",
         background: "rgb(15, 17, 21)",
@@ -370,6 +396,7 @@ function HomeView() {
           Start building your personalized watchlist and keep track of the
           greatest moments!
         </p>
+        <p style={subtitleStyle}>Top rated shows on MyAnimeList</p>
         <AnimeList />
         <Footer />
       </div>
